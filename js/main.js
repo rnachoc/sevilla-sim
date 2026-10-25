@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { loadWorld } from './world.js';
 import { buildCity, CHUNK } from './city.js';
 import { Ortho } from './ortho.js';
+import { DETAIL_LAYER } from './facades.js';
 import { buildLandmarks } from './landmarks.js';
 import { Environment } from './sky.js';
 import { Player } from './player.js';
@@ -26,8 +27,10 @@ async function init() {
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.3, 12000);
+  camera.layers.enable(DETAIL_LAYER);
 
   const env = new Environment(scene, renderer);
+  env.sun.shadow.camera.layers.enable(DETAIL_LAYER);
   const ortho = new Ortho(world, CHUNK);
   ortho.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
   const city = buildCity(scene, world, ortho);
@@ -64,7 +67,7 @@ async function init() {
     time += dt;
     player.update(dt);
     traffic.update(dt, time);
-    city.update(time, env.night);
+    city.update(time, env.night, camera.position);
     ortho.update(player.pos);
     landmarks.setNight(env.night);
     env.follow(player.root.position, player.mode === 'heli' ? Math.min(600, 180 + player.y * 1.5) : 150);

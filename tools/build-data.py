@@ -1,8 +1,8 @@
 """Convierte la descarga de Overpass (tools/overpass-query.txt) en data/sevilla.bin compacto.
 
-Uso:  python tools/build-data.py raw.json raw2.json data/sevilla.bin
-(raw = tools/overpass-query.txt, raw2 = tools/overpass-query-relations.txt)
-Datos © OpenStreetMap contributors, ODbL 1.0.
+Uso:  python tools/build-data.py raw.json raw2.json catastro.json data/sevilla.bin
+(raw = tools/overpass-query.txt, raw2 = tools/overpass-query-relations.txt, catastro = tools/catastro-heights.py)
+Datos © OpenStreetMap contributors, ODbL 1.0; alturas © Dirección General del Catastro.
 
 Formato de salida: [uint32 largo][cabecera JSON: nombres, monumentos, límites][varints zigzag]
 Coordenadas enteras en medios metros, x = este, z = sur, origen en la Giralda. Flujo, en orden:
@@ -14,6 +14,7 @@ Coordenadas enteras en medios metros, x = este, z = sur, origen en la Giralda. F
 """
 import json
 import math
+import os
 import sys
 import zlib
 
@@ -203,17 +204,59 @@ def h32(n):
     return zlib.crc32(str(n).encode()) & 0xffffffff
 
 
-def building_height(t, a, wid):
+GROUND, FLOOR, PARAPET = 4.0, 3.2, 0.9   # planta baja, plantas altas y pretil (m); igual que js/city.js
+
+
+def floors_to_h(lv):
+    return GROUND + (max(1, lv) - 1) * FLOOR + PARAPET
+
+
+class Catastro:
+    """Partes de edificio del Catastro (tools/catastro-heights.py) indexadas por su centroide."""
+    def __init__(self, path):
+        self.grid = {}
+        for part in json.load(open(path)):
+            fl, ring = part[0], list(zip(part[1::2], part[2::2]))
+            if len(ring) < 3:
+                continue
+            a = abs(area(ring))
+            cx = sum(p[0] for p in ring) / len(ring)
+            cz = sum(p[1] for p in ring) / len(ring)
+            self.grid.setdefault((int(cx // 32), int(cz // 32)), []).append((cx, cz, a, fl))
+
+    def floors(self, ring):
+        """Plantas de la huella OSM: valor que cubre al menos el 30 % del área, empezando por las más altas."""
+        xs, zs = [p[0] for p in ring], [p[1] for p in ring]
+        found = []
+        for i in range(int(min(xs) // 32), int(max(xs) // 32) + 1):
+            for j in range(int(min(zs) // 32), int(max(zs) // 32) + 1):
+                for cx, cz, a, fl in self.grid.get((i, j), ()):
+                    if point_in((cx, cz), ring):
+                        found.append((fl, a))
+        if not found:
+            return None
+        total = sum(a for _, a in found)
+        acc = 0
+        for fl, a in sorted(found, reverse=True):
+            acc += a
+            if acc >= total * 0.3:
+                return fl
+        return found[0][0]
+
+
+def building_height(t, a, wid, cat_floors=None):
     def num(v):
         try:
             return float(str(v).replace(',', '.').split()[0])
         except (ValueError, IndexError):
             return None
     h = num(t.get('height'))
+    if h is None and cat_floors:
+        h = floors_to_h(cat_floors)
     if h is None and t.get('building:levels'):
         lv = num(t['building:levels'])
         if lv is not None:
-            h = lv * 3.3 + 0.8
+            h = floors_to_h(lv)
     if h is None:
         r = h32(wid) % 100
         if a > 1500:
@@ -222,7 +265,7 @@ def building_height(t, a, wid):
             lv = 1 + r % 2
         else:
             lv = 2 + (r % 10 > 3) + (r % 10 > 8)
-        h = lv * 3.3 + 0.8
+        h = floors_to_h(lv)
     return max(3.0, min(h, 60.0))
 
 
@@ -264,9 +307,13 @@ def proj_inv(p):
 
 
 def main(srcs, dst):
-    els = []
+    els, cat = [], None
     for src in srcs:
-        els += json.load(open(src, encoding='utf-8'))['elements']
+        if 'catastro' in os.path.basename(src):
+            cat = Catastro(src)
+        else:
+            els += json.load(open(src, encoding='utf-8'))['elements']
+    n_cat = 0
     s, w, n, e = BBOX
     x0, z0 = proj(n, w)
     x1, z1 = proj(s, e)
@@ -320,7 +367,9 @@ def main(srcs, dst):
                 if a < 12:
                     continue
                 k = building_kind(t)
-                hgt = building_height(t, a, el['id'])
+                cf = cat.floors(o) if cat else None
+                n_cat += cf is not None
+                hgt = building_height(t, a, el['id'], cf)
                 if el['id'] in SPECIAL:
                     k, hgt = SPECIAL[el['id']]
                 head = [round(hgt * 10), k]
@@ -373,6 +422,7 @@ def main(srcs, dst):
     blob = len(head).to_bytes(4, 'little') + head + body
     open(dst, 'wb').write(blob)
     print(f'{dst}: {len(blob)/1024:.0f} KB  (gzip ~{len(zlib.compress(blob, 9))/1024:.0f} KB)')
+    print(f'alturas del Catastro: {n_cat} edificios')
     print(f'roads {len(roads)}  nodes {len(rn)//2}  buildings {len(blds)}  water {len(water)}  parks {len(parks)}  names {len(names)}')
 
 

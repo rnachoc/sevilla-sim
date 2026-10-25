@@ -9,8 +9,10 @@ Inspirado en [Slop New York](https://github.com/mrdoob/slop-newyork) de mrdoob (
 Abrir http://localhost:8765
 
 ## Datos
-`python tools/build-data.py raw.json raw2.json data/sevilla.bin` (consultas Overpass en `tools/`).
-Datos © OpenStreetMap contributors, ODbL 1.0. Ortofoto PNOA CC BY 4.0 scne.es (IGN), cargada en directo desde su WMTS.
+1. Descargas de Overpass con las consultas de `tools/` (raw.json, raw2.json).
+2. Alturas: `python tools/catastro-heights.py A.ES.SDGC.BU.41900.zip catastro.json` (ZIP INSPIRE de edificios de Sevilla del Catastro).
+3. `python tools/build-data.py raw.json raw2.json catastro.json data/sevilla.bin`
+Datos © OpenStreetMap contributors, ODbL 1.0. Ortofoto PNOA CC BY 4.0 scne.es (IGN), cargada en directo desde su WMTS. Alturas © Dirección General del Catastro.
 
 ## GitHub Pages
 Sitio estático: publicar la rama principal desde la raíz (incluye `.nojekyll`).

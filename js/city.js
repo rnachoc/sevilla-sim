@@ -2,65 +2,15 @@ import * as THREE from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { Acc, part, merge, box, cyl, hash, rng } from './geom.js';
 import { ROAD_STYLE, ringArea, inPoly } from './world.js';
+import { Facades, buildingColors } from './facades.js';
 
 export const CHUNK = 400;
-const FLOOR = 3.3;   // alto de planta (m)
-const BAY = 4.6;     // ancho de hueco de ventana (m)
 const WATER_Y = -1.4;
 
 const C = (hex) => new THREE.Color(hex);
-const WALLS = [
-  [0xf4f0e6, 40], [0xece4d2, 14], [0xe9b64c, 16], [0xf1cf7e, 9],
-  [0xb8573c, 6], [0xe8ab8e, 5], [0xdcd5ca, 5], [0xf6e7b8, 5],
-].flatMap(([h, w]) => Array(w).fill(C(h)));
 const ROOF_FLAT = [0xd0c9bc, 0xc8c0b1, 0xbdb6aa, 0xd9d2c5].map(C);
 const ROOF_TILE = [0xb0583a, 0xa14f33, 0xbd6a45, 0x9c5a3e].map(C);
-const KIND_COLOR = { 1: C(0xd6c29a), 2: C(0xb9653f), 3: C(0xe8c27a), 4: C(0xe4cc96) };
-
-function windowTextures() {
-  const S = 64;
-  const day = document.createElement('canvas');
-  day.width = day.height = S;
-  let g = day.getContext('2d');
-  g.fillStyle = '#ffffff'; g.fillRect(0, 0, S, S);
-  // zócalo/cornisa de planta
-  g.fillStyle = '#e9e2d4'; g.fillRect(0, 0, S, 3);
-  // recercado de albero, hueco y reja
-  const wx = 24, wy = 14, ww = 16, wh = 33;
-  g.fillStyle = '#e2ad4c'; g.fillRect(wx - 4, wy - 4, ww + 8, wh + 6);
-  g.fillStyle = '#39352f'; g.fillRect(wx, wy, ww, wh);
-  g.fillStyle = '#5b6e58'; g.fillRect(wx + 1, wy + 1, ww - 2, 11); // persiana de librillo
-    g.fillStyle = '#16181a';
-  for (let x = wx + 3; x < wx + ww; x += 5) g.fillRect(x, wy + 14, 1.5, wh - 14);
-  g.fillRect(wx - 2, wy + 14, ww + 4, 2);
-  g.fillRect(wx - 2, wy + wh - 2, ww + 4, 3);
-
-  const night = document.createElement('canvas');
-  night.width = night.height = S * 4;
-  g = night.getContext('2d');
-  g.fillStyle = '#000'; g.fillRect(0, 0, S * 4, S * 4);
-  const r = rng(7);
-  for (let i = 0; i < 4; i++) {
-    for (let j = 0; j < 4; j++) {
-      if (r() < 0.42) {
-        const k = 0.6 + r() * 0.4;
-        g.fillStyle = `rgb(${255 * k | 0},${185 * k | 0},${105 * k | 0})`;
-        g.fillRect(i * S + wx, j * S + wy, ww, wh);
-      }
-    }
-  }
-  const mk = (cv, rep) => {
-    const t = new THREE.CanvasTexture(cv);
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.colorSpace = THREE.SRGBColorSpace;
-    t.anisotropy = 4;
-    t.repeat.set(rep, rep);
-    // el canvas tiene el origen arriba; v crece hacia arriba en la fachada
-    t.flipY = true;
-    return t;
-  };
-  return { map: mk(day, 1), emissive: mk(night, 0.25) };
-}
+const KIND_COLOR = { 1: C(0xd6c29a), 4: C(0xe4cc96) };
 
 function addWalls(acc, r, y0, y1, col, sign, u0, skip) {
   const n = r.length / 2;
@@ -73,8 +23,7 @@ function addWalls(acc, r, y0, y1, col, sign, u0, skip) {
     if (len < 0.01 || (skip && skip(ax, az, bx, bz))) continue;
     const nrm = [s * dz / len, 0, -s * dx / len];
     const u1 = u + len;
-    acc.quad([ax, y0, az], [bx, y0, bz], [bx, y1, bz], [ax, y1, az], nrm, col,
-      [u / BAY, y0 / FLOOR], [u1 / BAY, y0 / FLOOR], [u1 / BAY, y1 / FLOOR], [u / BAY, y1 / FLOOR]);
+    acc.quad([ax, y0, az], [bx, y0, bz], [bx, y1, bz], [ax, y1, az], nrm, col);
     u = u1;
   }
 }
@@ -271,10 +220,7 @@ const WaterShader = {
 };
 
 export function buildCity(scene, world, ortho) {
-  const tex = windowTextures();
-  const facadeMat = new THREE.MeshStandardMaterial({
-    vertexColors: true, map: tex.map, emissiveMap: tex.emissive, emissive: 0xffffff, emissiveIntensity: 0, roughness: 0.88,
-  });
+  const facades = new Facades(world);
   const plainMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
   // iglesias y Catedral: iluminación ornamental nocturna con su propio color
   const stoneMat = plainMat.clone();
@@ -295,23 +241,32 @@ export function buildCity(scene, world, ortho) {
   const chunk = (x, z) => {
     const cx = Math.floor(x / CHUNK), cz = Math.floor(z / CHUNK), k = `${cx},${cz}`;
     let c = chunks.get(k);
-    if (!c) chunks.set(k, c = { cx, cz, facade: new Acc(true), plain: new Acc(), stone: new Acc(), roof: new Acc(), bridgeRoad: new Acc() });
+    if (!c) {
+      chunks.set(k, c = {
+        cx, cz, facade: new Acc(true, true), ground: new Acc(true, true), plain: new Acc(), stone: new Acc(), roof: new Acc(),
+        bridgeRoad: new Acc(), det: { slab: [], rail: [], cierro: [], pots: [] },
+      });
+    }
     return c;
   };
 
   // --- edificios
   for (const b of world.buildings) {
-    const h1 = hash(b.id * 3 + 1), h2 = hash(b.id * 3 + 2), h3 = hash(b.id * 3 + 3);
+    const h3 = hash(b.id * 3 + 3);
     const ch = chunk(b.outer[0], b.outer[1]);
-    let col = WALLS[(h1 * WALLS.length) | 0];
-    let acc = ch.facade, y0 = 0;
-    if (b.k === 1) { col = KIND_COLOR[1]; acc = ch.stone; }
-    else if (b.k === 2) col = KIND_COLOR[2];
-    else if (b.k === 3) col = KIND_COLOR[3];
-    else if (b.k === 4) { col = KIND_COLOR[4]; acc = ch.plain; y0 = 20; }
-    const u0 = h2 * 16;
-    addWalls(acc, b.outer, y0, b.h, col, 1, u0);
-    for (const h of b.holes) addWalls(acc, h, y0, b.h, col, -1, u0);
+    let col, y0 = 0;
+    if (b.k === 1 || b.k === 4) {
+      // iglesias y Setas: muro liso de piedra o madera
+      col = KIND_COLOR[b.k];
+      const acc = b.k === 1 ? ch.stone : ch.plain;
+      if (b.k === 4) y0 = 20;
+      addWalls(acc, b.outer, y0, b.h, col, 1, 0);
+      for (const h of b.holes) addWalls(acc, h, y0, b.h, col, -1, 0);
+    } else {
+      const cols = buildingColors(b.id, b.k);
+      col = cols.wall;
+      facades.addBuilding(b, ch, cols);
+    }
     const area = Math.abs(ringArea(b.outer));
     const tile = ROOF_TILE[(h3 * 97 | 0) % ROOF_TILE.length];
     if (b.k === 0 && !b.holes.length && area < 520 && b.h < 15 && h3 < 0.42 && isRectish(b.outer)) {
@@ -342,7 +297,8 @@ export function buildCity(scene, world, ortho) {
   const groups = { buildings: new THREE.Group(), roads: new THREE.Group() };
   for (const c of chunks.values()) {
     const oc = ortho.chunk(c.cx, c.cz);
-    for (const [acc, mat, grp] of [[c.facade, facadeMat, 'buildings'], [c.plain, plainMat, 'buildings'], [c.stone, stoneMat, 'buildings'], [c.roof, oc.roofMat, 'buildings'], [c.bridgeRoad, bridgeRoadMat, 'roads']]) {
+    facades.build(scene, c.det, c.cx, c.cz, CHUNK);
+    for (const [acc, mat, grp] of [[c.facade, facades.upperMat, 'buildings'], [c.ground, facades.groundMat, 'buildings'], [c.plain, plainMat, 'buildings'], [c.stone, stoneMat, 'buildings'], [c.roof, oc.roofMat, 'buildings'], [c.bridgeRoad, bridgeRoadMat, 'roads']]) {
       if (acc.empty) continue;
       const geo = acc.geometry();
       if (acc === c.roof) ortho.setUv(oc, geo);
@@ -432,12 +388,11 @@ export function buildCity(scene, world, ortho) {
   const lamps = buildLamps(scene, world);
 
   return {
-    facadeMat,
     plainMat,
     water,
-    update(time, night) {
+    update(time, night, cam) {
       water.material.uniforms.time.value = time;
-      facadeMat.emissiveIntensity = night * 1.1;
+      facades.update(night, cam);
       glow.value = night * 0.4;
       lamps.material.emissiveIntensity = 0.25 + night * 3.0;
       lamps.pool.opacity = night * 0.5;

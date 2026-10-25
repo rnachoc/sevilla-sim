@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-// Acumulador de triángulos no indexados con normal, color y uv opcionales.
+// Acumulador de triángulos no indexados con normal, color, uv y color de recercado (trim) opcionales.
 export class Acc {
-  constructor(withUv = false) {
+  constructor(withUv = false, withTrim = false) {
     this.p = []; this.n = []; this.c = []; this.uv = withUv ? [] : null;
+    this.t = withTrim ? [] : null;
+    this.trim = null;
   }
 
   // a, b, c = [x, y, z]; n = normal deseada (se corrige el orden para que coincida)
@@ -16,6 +18,7 @@ export class Acc {
     this.p.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
     for (let i = 0; i < 3; i++) { this.n.push(n[0], n[1], n[2]); this.c.push(col.r, col.g, col.b); }
     if (this.uv) this.uv.push(ua[0], ua[1], ub[0], ub[1], uc[0], uc[1]);
+    if (this.t) for (let i = 0; i < 3; i++) this.t.push(this.trim.r, this.trim.g, this.trim.b);
   }
 
   quad(a, b, c, d, n, col, ua, ub, uc, ud) {
@@ -31,6 +34,7 @@ export class Acc {
     g.setAttribute('normal', new THREE.Float32BufferAttribute(this.n, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.c, 3));
     if (this.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
+    if (this.t) g.setAttribute('trim', new THREE.Float32BufferAttribute(this.t, 3));
     g.computeBoundingSphere();
     g.computeBoundingBox();
     return g;
