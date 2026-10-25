@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Sevilla Sim</title>
+  <meta name="description" content="Sevilla en 3D en el navegador: casco histórico y Triana a partir de OpenStreetMap. Pasea, coge una Sevici, sube a un coche de caballos o vuela en helicóptero." />
+  <link rel="stylesheet" href="./css/style.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+
+  <div id="loading">
+    <div class="loading-box">
+      <div class="brand">Sevilla<span>Sim</span></div>
+      <div class="bar"><div id="loading-fill"></div></div>
+      <div id="loading-text">Cargando calles de OpenStreetMap…</div>
+    </div>
+  </div>
+
+  <header class="hud panel" id="hud-top">
+    <div class="brand">Sevilla<span>Sim</span></div>
+    <div class="modes" id="modes">
+      <button data-mode="walk" class="active" title="Andar (1)"><b>1</b> Andar</button>
+      <button data-mode="bike" title="Sevici (2)"><b>2</b> Sevici</button>
+      <button data-mode="carriage" title="Coche de caballos (3)"><b>3</b> Coche de caballos</button>
+      <button data-mode="heli" title="Helicóptero (4)"><b>4</b> Helicóptero</button>
+    </div>
+  </header>
+
+  <div class="hud panel" id="hud-time">
+    <button id="time-play" title="Avanzar el tiempo (T)">▶</button>
+    <input type="range" id="time-slider" min="0" max="24" step="0.05" value="17.6" aria-label="Hora del día" />
+    <span id="time-label">17:36</span>
+  </div>
+
+  <div class="hud" id="hud-street">
+    <div id="street-name">—</div>
+    <div id="street-sub"></div>
+  </div>
+
+  <div class="hud panel" id="hud-goto">
+    <select id="goto" aria-label="Ir a">
+      <option value="">Ir a…</option>
+    </select>
+    <span id="fps">60 fps</span>
+  </div>
+
+  <div class="hud" id="minimap-wrap">
+    <canvas id="minimap" width="200" height="200"></canvas>
+    <div id="speed">0 km/h</div>
+  </div>
+
+  <div class="hud panel" id="help">
+    <div><kbd>W</kbd><kbd>S</kbd> avanzar / frenar · <kbd>A</kbd><kbd>D</kbd> girar · <kbd>Shift</kbd> rápido</div>
+    <div class="heli-only"><kbd>Espacio</kbd> subir · <kbd>C</kbd> bajar</div>
+    <div class="walk-only"><kbd>Espacio</kbd> saltar</div>
+    <div>Arrastra para mirar · rueda para zoom · <kbd>M</kbd> mapa · <kbd>T</kbd> tiempo · <kbd>H</kbd> ocultar</div>
+  </div>
+
+  <div id="bigmap" hidden>
+    <canvas id="bigmap-canvas"></canvas>
+    <div class="bigmap-hint">Haz clic en el mapa para ir allí · <kbd>M</kbd> para cerrar</div>
+  </div>
+
+  <div id="touch" hidden>
+    <div id="stick"><div id="stick-knob"></div></div>
+    <div id="touch-buttons">
+      <button data-key="Space">▲</button>
+      <button data-key="KeyC">▼</button>
+      <button data-key="ShiftLeft">»</button>
+    </div>
+  </div>
+
+  <footer class="hud" id="attribution">
+    Datos © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL) ·
+    Inspirado en <a href="https://github.com/mrdoob/slop-newyork" target="_blank" rel="noopener">Slop New York</a> de mrdoob ·
+    <a href="https://threejs.org" target="_blank" rel="noopener">three.js</a>
+  </footer>
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>

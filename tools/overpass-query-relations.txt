@@ -1,0 +1,6 @@
+[out:json][timeout:120];
+(
+  relation["building"](37.370,-6.015,37.405,-5.975);
+  relation["building:part"](37.370,-6.015,37.405,-5.975);
+);
+out geom;

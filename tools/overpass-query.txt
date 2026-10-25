@@ -1,0 +1,12 @@
+[out:json][timeout:180];
+(
+  way["highway"~"^(primary|secondary|tertiary|residential|living_street|pedestrian|unclassified|service|footway|trunk|primary_link|secondary_link|tertiary_link|cycleway)$"](37.370,-6.015,37.405,-5.975);
+  way["building"](37.370,-6.015,37.405,-5.975);
+  way["natural"="water"](37.355,-6.030,37.420,-5.960);
+  relation["natural"="water"](37.355,-6.030,37.420,-5.960);
+  way["waterway"="riverbank"](37.355,-6.030,37.420,-5.960);
+  way["leisure"~"^(park|garden)$"](37.370,-6.015,37.405,-5.975);
+  relation["leisure"~"^(park|garden)$"](37.370,-6.015,37.405,-5.975);
+  way["man_made"="bridge"](37.370,-6.015,37.405,-5.975);
+);
+out geom;

@@ -1,0 +1,111 @@
+:root {
+  --panel: rgba(28, 20, 14, 0.62);
+  --panel-border: rgba(255, 220, 160, 0.18);
+  --text: #fff7ea;
+  --muted: #e6d3b5;
+  --accent: #f0b43c;
+  --accent-2: #c0392b;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #1a120c;
+  color: var(--text);
+  font: 14px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#app, #app canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+.hud { position: fixed; z-index: 5; }
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+}
+body.hide-hud .hud:not(#attribution) { display: none; }
+
+.brand { font-weight: 800; font-size: 18px; letter-spacing: 0.02em; }
+.brand span { color: var(--accent); margin-left: 4px; }
+
+#hud-top { top: 12px; left: 12px; padding: 8px 10px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; max-width: calc(100vw - 24px); }
+.modes { display: flex; gap: 6px; flex-wrap: wrap; }
+.modes button, #hud-time button, #touch-buttons button {
+  font: inherit; color: var(--text); background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; padding: 6px 10px; cursor: pointer;
+}
+.modes button b { color: var(--accent); margin-right: 3px; font-weight: 700; }
+.modes button:hover { background: rgba(255, 255, 255, 0.16); }
+.modes button.active { background: var(--accent); color: #2b1a08; border-color: var(--accent); }
+.modes button.active b { color: #2b1a08; }
+
+#hud-time { top: 12px; right: 12px; padding: 6px 10px; display: flex; align-items: center; gap: 8px; }
+#time-slider { width: 140px; accent-color: var(--accent); }
+#time-label { font-variant-numeric: tabular-nums; min-width: 42px; text-align: right; font-weight: 600; }
+
+#hud-goto { top: 58px; right: 12px; padding: 6px 8px; display: flex; gap: 8px; align-items: center; }
+#goto { font: inherit; color: var(--text); background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; padding: 4px 6px; }
+#goto option { color: #222; }
+#fps { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+#hud-street { left: 50%; bottom: 22px; transform: translateX(-50%); text-align: center; pointer-events: none; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7); }
+#street-name {
+  display: inline-block; padding: 6px 16px; font-size: 20px; font-weight: 700;
+  background: #f7f3ea; color: #1d3f8a; border: 3px solid #1d3f8a; border-radius: 4px;
+  box-shadow: 0 0 0 3px #f7f3ea, 0 6px 18px rgba(0, 0, 0, 0.35); text-shadow: none;
+}
+#street-sub { margin-top: 8px; font-size: 13px; color: var(--muted); }
+
+#minimap-wrap { right: 14px; bottom: 34px; width: 200px; height: 200px; }
+#minimap { width: 200px; height: 200px; border-radius: 50%; border: 3px solid rgba(255, 240, 210, 0.85); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35); background: #cdbf9f; }
+#speed { position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--panel-border); border-radius: 10px; padding: 1px 10px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+#help { left: 12px; bottom: 34px; padding: 8px 12px; font-size: 12px; color: var(--muted); line-height: 1.7; }
+#help .heli-only, #help .walk-only { display: none; }
+body.mode-heli #help .heli-only, body.mode-walk #help .walk-only { display: block; }
+kbd { display: inline-block; min-width: 18px; padding: 0 4px; margin: 0 1px; text-align: center; border-radius: 4px; background: rgba(255, 255, 255, 0.14); color: var(--text); font: 600 11px/17px system-ui, sans-serif; }
+
+#attribution { left: 0; right: 0; bottom: 0; padding: 3px 8px; font-size: 11px; text-align: center; color: rgba(255, 245, 230, 0.8); background: rgba(0, 0, 0, 0.35); }
+#attribution a { color: inherit; }
+
+#bigmap { position: fixed; inset: 0; z-index: 20; background: rgba(20, 14, 8, 0.82); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; }
+#bigmap[hidden] { display: none; }
+#bigmap-canvas { max-width: 100%; max-height: calc(100% - 40px); border-radius: 10px; cursor: crosshair; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); }
+.bigmap-hint { margin-top: 10px; color: var(--muted); font-size: 13px; }
+
+#loading { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at 50% 40%, #6b3b1c, #1a120c 70%); transition: opacity 0.6s; }
+#loading.done { opacity: 0; pointer-events: none; }
+.loading-box { width: min(360px, calc(100vw - 32px)); text-align: center; }
+.loading-box .brand { font-size: 34px; margin-bottom: 18px; }
+.bar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.15); overflow: hidden; }
+#loading-fill { height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
+#loading-text { margin-top: 12px; color: var(--muted); font-size: 13px; }
+
+#touch[hidden] { display: none; }
+#stick { position: fixed; z-index: 6; left: 24px; bottom: 60px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255, 255, 255, 0.12); border: 2px solid rgba(255, 255, 255, 0.3); touch-action: none; }
+#stick-knob { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255, 230, 190, 0.7); }
+#touch-buttons { position: fixed; z-index: 6; right: 230px; bottom: 60px; display: flex; flex-direction: column; gap: 10px; }
+#touch-buttons button { width: 54px; height: 54px; font-size: 20px; border-radius: 50%; touch-action: none; }
+
+@media (max-width: 700px) {
+  #help { display: none; }
+  #hud-top { padding: 6px; gap: 8px; }
+  .brand { font-size: 15px; }
+  .modes button { padding: 5px 7px; font-size: 12px; }
+  .modes button b { display: none; }
+  #hud-time { top: auto; bottom: 250px; right: 12px; }
+  #time-slider { width: 100px; }
+  #hud-goto { top: auto; bottom: 296px; }
+  #minimap-wrap, #minimap { width: 150px; height: 150px; }
+  #touch-buttons { right: 16px; bottom: 210px; flex-direction: row; }
+  #street-name { font-size: 15px; padding: 4px 10px; }
+  #hud-street { bottom: 200px; width: calc(100vw - 32px); }
+}
