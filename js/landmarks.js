@@ -101,6 +101,13 @@ function plazaCenter() {
 
 export function buildLandmarks(scene, world) {
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 });
+  // iluminación ornamental nocturna: el monumento brilla con su propio color
+  const glow = { value: 0 };
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.glow = glow;
+    sh.fragmentShader = 'uniform float glow;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>',
+      '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vColor.rgb * vec3(1.0, 0.78, 0.5) * glow;');
+  };
   const group = new THREE.Group();
   const solids = [];
   const add = (geo, x, z, rotY = 0, r = 0, h = 0) => {
@@ -186,5 +193,5 @@ export function buildLandmarks(scene, world) {
   }
 
   scene.add(group);
-  return { group, info, solids };
+  return { group, info, solids, setNight: (n) => { glow.value = n * 0.55; } };
 }

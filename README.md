@@ -9,7 +9,7 @@ Inspirado en [Slop New York](https://github.com/mrdoob/slop-newyork) de mrdoob (
 Abrir http://localhost:8765
 
 ## Datos
-`python tools/build-data.py raw.json raw2.json data/sevilla.json` (consultas Overpass en `tools/`).
+`python tools/build-data.py raw.json raw2.json data/sevilla.bin` (consultas Overpass en `tools/`).
 Datos © OpenStreetMap contributors, ODbL 1.0.
 
 ## GitHub Pages

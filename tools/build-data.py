@@ -1,16 +1,16 @@
-"""Convierte la descarga de Overpass (tools/overpass-query.txt) en data/sevilla.json compacto.
+"""Convierte la descarga de Overpass (tools/overpass-query.txt) en data/sevilla.bin compacto.
 
-Uso:  python tools/build-data.py raw.json raw2.json data/sevilla.json
+Uso:  python tools/build-data.py raw.json raw2.json data/sevilla.bin
 (raw = tools/overpass-query.txt, raw2 = tools/overpass-query-relations.txt)
 Datos © OpenStreetMap contributors, ODbL 1.0.
 
-Formato de salida (coordenadas enteras en medios metros, x = este, z = sur, origen en la Giralda):
-  names: tabla de nombres de calle
-  rn:    vértices del grafo viario [x0,z0,x1,z1,...]
-  roads: [tipo, nombre, flags, i0, i1, ...]  (índices de vértice en rn; flags bit0 = puente)
-  b:     [alturaDm, tipo, x0, z0, dx1, dz1, ...]  (anillo exterior en deltas)
-  bh:    [alturaDm, tipo, [exterior], [patio], ...]  (edificios con patios)
-  water/parks: [[anillo exterior en deltas], [huecos...]]
+Formato de salida: [uint32 largo][cabecera JSON: nombres, monumentos, límites][varints zigzag]
+Coordenadas enteras en medios metros, x = este, z = sur, origen en la Giralda. Flujo, en orden:
+  nodos viarios:  N, x0, z0, dx1, dz1, ...
+  calles:         R, y por calle: tipo, nombre, flags (bit0 = puente), n, i0, di1, ...
+  edificios:      B, y por edificio: alturaDm, tipo, anillos, y por anillo: n, deltas
+                  (el primer vértice del exterior es relativo al del edificio anterior)
+  agua, parques:  P, y por polígono: anillos, y por anillo: n, deltas
 """
 import json
 import math
@@ -20,6 +20,7 @@ import zlib
 LAT0, LON0 = 37.38619, -5.99259          # Giralda
 BBOX = (37.370, -6.015, 37.405, -5.975)  # s, w, n, e
 Q = 2                                    # unidades por metro
+B_EPS = 0.5                              # simplificación de huellas (m)
 KX = math.cos(math.radians(LAT0)) * 111320.0
 KZ = 110574.0
 
@@ -312,7 +313,7 @@ def main(srcs, dst):
         elif 'building' in t:
             if el['id'] in SKIP_IDS:
                 continue
-            for o, holes in polygons(el, 0.35, None):
+            for o, holes in polygons(el, B_EPS, None):
                 if len(o) < 3 or not in_bbox(*proj_inv(o[0])):
                     continue
                 a = abs(area(o))
@@ -335,18 +336,63 @@ def main(srcs, dst):
                     continue
                 target.append([enc_ring(o, True)] + [enc_ring(h, False) for h in holes if len(h) > 2])
 
-    out = {
-        'v': 1,
-        'origin': [LAT0, LON0], 'q': Q,
+    # binario: [uint32 largo cabecera][cabecera JSON UTF-8][flujo de varints zigzag]
+    blds = [(b[0], b[1], [b[2:]]) for b in bldgs] + [(b[0], b[1], b[2:]) for b in bholes]
+    blds.sort(key=lambda b: morton(b[2][0][0], b[2][0][1]))  # orden espacial: deltas pequeños entre edificios
+    st = []
+    st.append(len(rn) // 2)
+    st += rn[:2] + [rn[i] - rn[i - 2] for i in range(2, len(rn))]
+    st.append(len(roads))
+    for r in roads:
+        idx = r[3:]
+        st += [r[0], r[1], r[2], len(idx), idx[0]] + [idx[i] - idx[i - 1] for i in range(1, len(idx))]
+    st.append(len(blds))
+    px = pz = 0
+    for h, k, rings in blds:
+        st += [h, k, len(rings)]
+        for ri, ring in enumerate(rings):
+            st.append(len(ring) // 2)
+            if ri == 0:  # primer vértice relativo al del edificio anterior
+                st += [ring[0] - px, ring[1] - pz] + ring[2:]
+                px, pz = ring[0], ring[1]
+            else:
+                st += ring
+    for polys in (water, parks):
+        st.append(len(polys))
+        for rings in polys:
+            st.append(len(rings))
+            for ring in rings:
+                st += [len(ring) // 2] + ring
+    head = json.dumps({
+        'v': 3, 'origin': [LAT0, LON0], 'q': Q,
         'bounds': [round(x0), round(z0), round(x1), round(z1)],
         'attribution': '© OpenStreetMap contributors, ODbL 1.0',
-        'names': names, 'rn': rn, 'roads': roads, 'b': bldgs, 'bh': bholes, 'water': water, 'parks': parks, 'lm': lm,
-    }
-    txt = json.dumps(out, ensure_ascii=False, separators=(',', ':'))
-    open(dst, 'w', encoding='utf-8').write(txt)
-    print(f'{dst}: {len(txt)/1024:.0f} KB  (gzip ~{len(zlib.compress(txt.encode(), 9))/1024:.0f} KB)')
-    print(f'roads {len(roads)}  nodes {len(rn)//2}  buildings {len(bldgs)}+{len(bholes)}  water {len(water)}  parks {len(parks)}  names {len(names)}')
+        'names': names, 'lm': lm,
+    }, ensure_ascii=False, separators=(',', ':')).encode()
+    body = varints(st)
+    blob = len(head).to_bytes(4, 'little') + head + body
+    open(dst, 'wb').write(blob)
+    print(f'{dst}: {len(blob)/1024:.0f} KB  (gzip ~{len(zlib.compress(blob, 9))/1024:.0f} KB)')
+    print(f'roads {len(roads)}  nodes {len(rn)//2}  buildings {len(blds)}  water {len(water)}  parks {len(parks)}  names {len(names)}')
 
+
+def morton(x, z):
+    x, z = (x + 32768) >> 6, (z + 32768) >> 6  # celdas de 32 m
+    r = 0
+    for i in range(12):
+        r |= ((x >> i) & 1) << (2 * i) | ((z >> i) & 1) << (2 * i + 1)
+    return r
+
+
+def varints(nums):
+    out = bytearray()
+    for n in nums:
+        z = (n << 1) ^ (n >> 63)
+        while z >= 0x80:
+            out.append((z & 0x7f) | 0x80)
+            z >>= 7
+        out.append(z)
+    return bytes(out)
 
 if __name__ == '__main__':
     main(sys.argv[1:-1], sys.argv[-1])

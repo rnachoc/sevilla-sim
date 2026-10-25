@@ -76,19 +76,19 @@ export class Environment {
 
     const warm = 1 - THREE.MathUtils.smoothstep(elDeg, 2, 35);
     const sunCol = new THREE.Color(0xffffff).lerp(new THREE.Color(0xff9a4a), warm * 0.85);
-    const moonCol = new THREE.Color(0x8aa6d8);
+    const moonCol = new THREE.Color(0xa4bae6);
     this.sun.color.copy(sunCol).lerp(moonCol, 1 - day);
-    this.sun.intensity = day * (1.3 + 3.0 * Math.min(1, Math.max(0, Math.sin(el)) * 2.5)) + (1 - day) * 0.4;
+    this.sun.intensity = day * (1.3 + 3.0 * Math.min(1, Math.max(0, Math.sin(el)) * 2.5)) + (1 - day) * 0.7;
     // de noche las sombras las proyecta una luna opuesta al sol
     this.lightDir = day > 0.01 ? d.clone() : new THREE.Vector3(-d.x, Math.abs(d.y) + 0.5, -d.z).normalize();
 
-    this.hemi.intensity = 0.2 + day * 0.4;
-    this.hemi.color.set(0xd8e0f0).lerp(new THREE.Color(0x1b2a4a), this.night);
-    this.hemi.groundColor.set(0x9a7a52).lerp(new THREE.Color(0x15110c), this.night);
+    this.hemi.intensity = 0.6 - this.night * 0.15;
+    this.hemi.color.set(0xd8e0f0).lerp(new THREE.Color(0x40568a), this.night);
+    this.hemi.groundColor.set(0x9a7a52).lerp(new THREE.Color(0x2a2218), this.night);
 
-    const fogDay = new THREE.Color(0xd9d6cf), fogDusk = new THREE.Color(0xe7b07c), fogNight = new THREE.Color(0x0d1220);
+    const fogDay = new THREE.Color(0xd9d6cf), fogDusk = new THREE.Color(0xe7b07c), fogNight = new THREE.Color(0x1c2540);
     this.scene.fog.color.copy(fogDay).lerp(fogDusk, warm).lerp(fogNight, this.night);
-    this.renderer.toneMappingExposure = 0.75 + this.night * 0.2;
+    this.renderer.toneMappingExposure = 0.75 + this.night * 0.35;
 
     if (Math.abs(this.hour - this.lastEnvHour) > 0.2) this.updateEnv();
   }

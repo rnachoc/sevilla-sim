@@ -12,7 +12,7 @@ const text = document.getElementById('loading-text');
 const step = (p, t) => { fill.style.width = `${p * 100}%`; if (t) text.textContent = t; return new Promise((r) => setTimeout(r, 0)); };
 
 async function init() {
-  const world = await loadWorld('./data/sevilla.json', (p) => { fill.style.width = `${p * 40}%`; });
+  const world = await loadWorld('./data/sevilla.bin', (p) => { fill.style.width = `${p * 40}%`; });
   await step(0.45, 'Levantando fachadas y azoteas…');
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, stencil: true, logarithmicDepthBuffer: true, powerPreference: 'high-performance' });
@@ -47,7 +47,7 @@ async function init() {
   });
 
   // para depurar desde la consola
-  window.sevilla = { THREE, scene, camera, renderer, world, player, env, hud };
+  window.sevilla = { THREE, scene, camera, renderer, world, player, env, hud, city, traffic, landmarks };
 
   const clock = new THREE.Clock();
   let time = 0;
@@ -57,6 +57,7 @@ async function init() {
     player.update(dt);
     traffic.update(dt, time);
     city.update(time, env.night);
+    landmarks.setNight(env.night);
     env.follow(player.root.position, player.mode === 'heli' ? Math.min(600, 180 + player.y * 1.5) : 150);
     hud.update(dt);
     renderer.render(scene, camera);

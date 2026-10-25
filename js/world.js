@@ -1,4 +1,4 @@
-// Carga data/sevilla.json (generado por tools/build-data.py) y ofrece consultas espaciales:
+// Carga data/sevilla.bin (generado por tools/build-data.py) y ofrece consultas espaciales:
 // edificio en un punto, agua, calle más cercana y grafo viario para el tráfico.
 // Mundo: 1 unidad = 1 m, x = este, z = sur, origen en la Giralda.
 
@@ -63,7 +63,7 @@ export function makeProjector(origin) {
 export async function loadWorld(url, onProgress) {
   const res = await fetch(url);
   const total = +res.headers.get('content-length') || 0;
-  let text;
+  let buf;
   if (res.body && total && onProgress) {
     const reader = res.body.getReader();
     const chunks = [];
@@ -75,11 +75,62 @@ export async function loadWorld(url, onProgress) {
       got += value.length;
       onProgress(got / total);
     }
-    text = await new Blob(chunks).text();
+    buf = await new Blob(chunks).arrayBuffer();
   } else {
-    text = await res.text();
+    buf = await res.arrayBuffer();
   }
-  return new World(JSON.parse(text));
+  return new World(decode(buf));
+}
+
+// formato de tools/build-data.py: [uint32 largo][cabecera JSON][varints zigzag]
+function decode(buf) {
+  const bytes = new Uint8Array(buf);
+  const hl = new DataView(buf).getUint32(0, true);
+  const d = JSON.parse(new TextDecoder().decode(bytes.subarray(4, 4 + hl)));
+  let p = 4 + hl;
+  const next = () => {
+    let v = 0, shift = 0, b;
+    do { b = bytes[p++]; v += (b & 0x7f) * 2 ** shift; shift += 7; } while (b & 0x80);
+    return v % 2 ? -(v + 1) / 2 : v / 2;
+  };
+  const q = d.q;
+  // anillo en deltas; (ox, oz) = origen del primer delta
+  const ring = (ox = 0, oz = 0) => {
+    const n = next(), out = new Float32Array(n * 2);
+    let x = ox, z = oz;
+    for (let i = 0; i < n; i++) { x += next(); z += next(); out[i * 2] = x / q; out[i * 2 + 1] = z / q; }
+    return out;
+  };
+  const rn = ring();
+  const roads = [];
+  for (let i = next(); i > 0; i--) {
+    const type = next(), name = d.names[next()], flags = next(), n = next();
+    const nodes = new Array(n);
+    let k = 0;
+    for (let j = 0; j < n; j++) nodes[j] = k += next();
+    roads.push({ type, name, bridge: !!(flags & 1), nodes });
+  }
+  const buildings = [];
+  let px = 0, pz = 0;
+  for (let i = next(); i > 0; i--) {
+    const h = next() / 10, kind = next(), nr = next();
+    const outer = ring(px, pz);
+    px = Math.round(outer[0] * q); pz = Math.round(outer[1] * q);
+    const holes = [];
+    for (let j = 1; j < nr; j++) holes.push(ring());
+    buildings.push({ h, k: kind, outer, holes });
+  }
+  const polys = () => {
+    const list = [];
+    for (let i = next(); i > 0; i--) {
+      const nr = next(), outer = ring(), holes = [];
+      for (let j = 1; j < nr; j++) holes.push(ring());
+      list.push({ outer, holes });
+    }
+    return list;
+  };
+  const water = polys(), parks = polys();
+  return { ...d, rn, roads, buildings, water, parks };
 }
 
 export const CAR_TYPES = new Set([0, 1, 2, 3, 4, 5]);
@@ -98,28 +149,15 @@ export const ROAD_STYLE = [
 
 class World {
   constructor(d) {
-    const q = d.q;
     this.bounds = d.bounds;
     this.origin = d.origin;
     this.lm = d.lm;
     this.project = makeProjector(d.origin);
-    const dec = (a, off = 0) => {
-      const out = new Float32Array(a.length - off);
-      let x = 0, z = 0;
-      for (let i = off, j = 0; i < a.length; i += 2, j += 2) {
-        x += a[i]; z += a[i + 1];
-        out[j] = x / q; out[j + 1] = z / q;
-      }
-      return out;
-    };
-    this.rn = Float32Array.from(d.rn, (v) => v / q);
-    this.buildings = [];
-    for (const b of d.b) this.buildings.push({ h: b[0] / 10, k: b[1], outer: dec(b, 2), holes: [] });
-    for (const b of d.bh) this.buildings.push({ h: b[0] / 10, k: b[1], outer: dec(b[2]), holes: b.slice(3).map((r) => dec(r)) });
-    this.roads = d.roads.map((r) => ({ type: r[0], name: d.names[r[1]], bridge: !!(r[2] & 1), nodes: r.slice(3) }));
-    const poly = (p) => ({ outer: dec(p[0]), holes: p.slice(1).map((r) => dec(r)) });
-    this.water = d.water.map(poly);
-    this.parks = d.parks.map(poly);
+    this.rn = d.rn;
+    this.buildings = d.buildings;
+    this.roads = d.roads;
+    this.water = d.water;
+    this.parks = d.parks;
 
     this.bGrid = new Grid(32);
     this.buildings.forEach((b, i) => {

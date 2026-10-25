@@ -276,6 +276,14 @@ export function buildCity(scene, world) {
     vertexColors: true, map: tex.map, emissiveMap: tex.emissive, emissive: 0xffffff, emissiveIntensity: 0, roughness: 0.88,
   });
   const plainMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
+  // iglesias y Catedral: iluminación ornamental nocturna con su propio color
+  const stoneMat = plainMat.clone();
+  const glow = { value: 0 };
+  stoneMat.onBeforeCompile = (sh) => {
+    sh.uniforms.glow = glow;
+    sh.fragmentShader = 'uniform float glow;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>',
+      '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vColor.rgb * vec3(1.0, 0.78, 0.5) * glow;');
+  };
   // el suelo, los parques y las calles no se pintan donde hay agua (máscara de stencil)
   const notWater = {
     stencilWrite: true, stencilWriteMask: 0, stencilRef: 1, stencilFunc: THREE.NotEqualStencilFunc,
@@ -288,7 +296,7 @@ export function buildCity(scene, world) {
   const chunk = (x, z) => {
     const k = `${Math.floor(x / CHUNK)},${Math.floor(z / CHUNK)}`;
     let c = chunks.get(k);
-    if (!c) chunks.set(k, c = { facade: new Acc(true), plain: new Acc(), road: new Acc(), bridgeRoad: new Acc() });
+    if (!c) chunks.set(k, c = { facade: new Acc(true), plain: new Acc(), stone: new Acc(), road: new Acc(), bridgeRoad: new Acc() });
     return c;
   };
 
@@ -298,7 +306,7 @@ export function buildCity(scene, world) {
     const ch = chunk(b.outer[0], b.outer[1]);
     let col = WALLS[(h1 * WALLS.length) | 0];
     let acc = ch.facade, y0 = 0;
-    if (b.k === 1) { col = KIND_COLOR[1]; acc = ch.plain; }
+    if (b.k === 1) { col = KIND_COLOR[1]; acc = ch.stone; }
     else if (b.k === 2) col = KIND_COLOR[2];
     else if (b.k === 3) col = KIND_COLOR[3];
     else if (b.k === 4) { col = KIND_COLOR[4]; acc = ch.plain; y0 = 20; }
@@ -313,7 +321,7 @@ export function buildCity(scene, world) {
       addHip(ch.plain, b.outer, b.h, tile);
     } else {
       const roof = b.k === 2 ? tile : b.k === 1 ? C(0xcab48a) : ROOF_FLAT[(h3 * 61 | 0) % ROOF_FLAT.length];
-      addCap(ch.plain, b.outer, b.holes, b.h, roof);
+      addCap(b.k === 1 ? ch.stone : ch.plain, b.outer, b.holes, b.h, roof);
       if (y0 > 0) addCap(ch.plain, b.outer, b.holes, y0, col, -1);
     }
   }
@@ -337,7 +345,7 @@ export function buildCity(scene, world) {
 
   const groups = { buildings: new THREE.Group(), roads: new THREE.Group() };
   for (const c of chunks.values()) {
-    for (const [acc, mat, grp] of [[c.facade, facadeMat, 'buildings'], [c.plain, plainMat, 'buildings'], [c.road, roadMat, 'roads'], [c.bridgeRoad, bridgeRoadMat, 'roads']]) {
+    for (const [acc, mat, grp] of [[c.facade, facadeMat, 'buildings'], [c.plain, plainMat, 'buildings'], [c.stone, stoneMat, 'buildings'], [c.road, roadMat, 'roads'], [c.bridgeRoad, bridgeRoadMat, 'roads']]) {
       if (acc.empty) continue;
       const m = new THREE.Mesh(acc.geometry(), mat);
       m.castShadow = grp === 'buildings';
@@ -424,7 +432,10 @@ export function buildCity(scene, world) {
     update(time, night) {
       water.material.uniforms.time.value = time;
       facadeMat.emissiveIntensity = night * 1.1;
+      glow.value = night * 0.4;
       lamps.material.emissiveIntensity = 0.25 + night * 3.0;
+      lamps.pool.opacity = night * 0.5;
+      lamps.pool.visible = night > 0.01;
     },
     vegetation,
   };
@@ -531,7 +542,26 @@ function buildLamps(scene, world) {
   const toMatrix = ([x, z]) => new THREE.Matrix4().makeTranslation(x, 0, z);
   instancedChunks(scene, post, postMat, spots, toMatrix, false);
   instancedChunks(scene, head, headMat, spots, toMatrix, false);
-  return { material: headMat };
+  // charco de luz bajo cada farola (solo de noche)
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 64;
+  const g = cv.getContext('2d');
+  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(255,200,130,1)');
+  grad.addColorStop(0.45, 'rgba(255,170,90,0.45)');
+  grad.addColorStop(1, 'rgba(255,150,70,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  const pool = new THREE.PlaneGeometry(14, 14);
+  pool.rotateX(-Math.PI / 2);
+  pool.translate(0, 0.14, 0);
+  const poolMat = new THREE.MeshBasicMaterial({
+    map: new THREE.CanvasTexture(cv), transparent: true, opacity: 0, depthWrite: false,
+    blending: THREE.AdditiveBlending, fog: true,
+  });
+  poolMat.map.colorSpace = THREE.SRGBColorSpace;
+  instancedChunks(scene, pool, poolMat, spots, toMatrix, false);
+  return { material: headMat, pool: poolMat };
 }
 
 // instancias repartidas por teselas para que el recorte por frustum funcione (también en sombras y reflejos)
