@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { loadWorld } from './world.js';
-import { buildCity } from './city.js';
+import { buildCity, CHUNK } from './city.js';
+import { Ortho } from './ortho.js';
 import { buildLandmarks } from './landmarks.js';
 import { Environment } from './sky.js';
 import { Player } from './player.js';
@@ -27,7 +28,14 @@ async function init() {
   const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.3, 12000);
 
   const env = new Environment(scene, renderer);
-  const city = buildCity(scene, world);
+  const ortho = new Ortho(world, CHUNK);
+  ortho.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  const city = buildCity(scene, world, ortho);
+  await step(0.6, 'Descargando la ortofoto del IGN…');
+  await Promise.race([
+    ortho.preload((p) => { fill.style.width = `${60 + p * 15}%`; }),
+    new Promise((r) => setTimeout(r, 20000)),
+  ]);
   await step(0.75, 'Colocando la Giralda, la Torre del Oro y la Plaza de España…');
   const landmarks = buildLandmarks(scene, world);
   const traffic = new Traffic(scene, world);
@@ -47,7 +55,7 @@ async function init() {
   });
 
   // para depurar desde la consola
-  window.sevilla = { THREE, scene, camera, renderer, world, player, env, hud, city, traffic, landmarks };
+  window.sevilla = { THREE, scene, camera, renderer, world, player, env, hud, city, traffic, landmarks, ortho };
 
   const clock = new THREE.Clock();
   let time = 0;
@@ -57,6 +65,7 @@ async function init() {
     player.update(dt);
     traffic.update(dt, time);
     city.update(time, env.night);
+    ortho.update(player.pos);
     landmarks.setNight(env.night);
     env.follow(player.root.position, player.mode === 'heli' ? Math.min(600, 180 + player.y * 1.5) : 150);
     hud.update(dt);

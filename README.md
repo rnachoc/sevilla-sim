@@ -1,6 +1,6 @@
 # Sevilla Sim
 
-Sevilla en 3D en el navegador (three.js): casco histórico y Triana generados desde OpenStreetMap. Andar, Sevici, coche de caballos y helicóptero; hora del día, tráfico, reflejos en el Guadalquivir y minimapa.
+Sevilla en 3D en el navegador (three.js): casco histórico y Triana generados desde OpenStreetMap, con la ortofoto PNOA del IGN en suelo y tejados. Andar, Sevici, coche de caballos y helicóptero; hora del día, tráfico, reflejos en el Guadalquivir y minimapa.
 
 Inspirado en [Slop New York](https://github.com/mrdoob/slop-newyork) de mrdoob (MIT). Código propio.
 
@@ -10,7 +10,7 @@ Abrir http://localhost:8765
 
 ## Datos
 `python tools/build-data.py raw.json raw2.json data/sevilla.bin` (consultas Overpass en `tools/`).
-Datos © OpenStreetMap contributors, ODbL 1.0.
+Datos © OpenStreetMap contributors, ODbL 1.0. Ortofoto PNOA CC BY 4.0 scne.es (IGN), cargada en directo desde su WMTS.
 
 ## GitHub Pages
 Sitio estático: publicar la rama principal desde la raíz (incluye `.nojekyll`).

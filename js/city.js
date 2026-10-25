@@ -3,7 +3,7 @@ import { Reflector } from 'three/addons/objects/Reflector.js';
 import { Acc, part, merge, box, cyl, hash, rng } from './geom.js';
 import { ROAD_STYLE, ringArea, inPoly } from './world.js';
 
-const CHUNK = 400;
+export const CHUNK = 400;
 const FLOOR = 3.3;   // alto de planta (m)
 const BAY = 4.6;     // ancho de hueco de ventana (m)
 const WATER_Y = -1.4;
@@ -128,7 +128,7 @@ function isConvex(r) {
   return true;
 }
 
-function addGable(acc, r, y, roofCol, wallCol) {
+function addGable(acc, r, y, roofCol, wallCol, wallAcc = acc) {
   let p = [0, 1, 2, 3].map((i) => [r[i * 2], r[i * 2 + 1]]);
   const d = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
   if (d(p[1], p[2]) > d(p[0], p[1])) p = [p[1], p[2], p[3], p[0]];
@@ -143,7 +143,7 @@ function addGable(acc, r, y, roofCol, wallCol) {
   const cx = (R0[0] + R1[0]) / 2, cz = (R0[2] + R1[2]) / 2;
   for (const [a, b, R] of [[v[1], v[2], R1], [v[3], v[0], R0]]) {
     const nx = R[0] - cx, nz = R[2] - cz, l = Math.hypot(nx, nz) || 1;
-    acc.tri(a, b, R, [nx / l, 0, nz / l], wallCol);
+    wallAcc.tri(a, b, R, [nx / l, 0, nz / l], wallCol);
   }
 }
 
@@ -270,7 +270,7 @@ const WaterShader = {
     }`,
 };
 
-export function buildCity(scene, world) {
+export function buildCity(scene, world, ortho) {
   const tex = windowTextures();
   const facadeMat = new THREE.MeshStandardMaterial({
     vertexColors: true, map: tex.map, emissiveMap: tex.emissive, emissive: 0xffffff, emissiveIntensity: 0, roughness: 0.88,
@@ -289,14 +289,13 @@ export function buildCity(scene, world) {
     stencilWrite: true, stencilWriteMask: 0, stencilRef: 1, stencilFunc: THREE.NotEqualStencilFunc,
     stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.KeepStencilOp,
   };
-  const roadMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, ...notWater });
   const bridgeRoadMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });
 
   const chunks = new Map();
   const chunk = (x, z) => {
-    const k = `${Math.floor(x / CHUNK)},${Math.floor(z / CHUNK)}`;
+    const cx = Math.floor(x / CHUNK), cz = Math.floor(z / CHUNK), k = `${cx},${cz}`;
     let c = chunks.get(k);
-    if (!c) chunks.set(k, c = { facade: new Acc(true), plain: new Acc(), stone: new Acc(), road: new Acc(), bridgeRoad: new Acc() });
+    if (!c) chunks.set(k, c = { cx, cz, facade: new Acc(true), plain: new Acc(), stone: new Acc(), roof: new Acc(), bridgeRoad: new Acc() });
     return c;
   };
 
@@ -316,12 +315,12 @@ export function buildCity(scene, world) {
     const area = Math.abs(ringArea(b.outer));
     const tile = ROOF_TILE[(h3 * 97 | 0) % ROOF_TILE.length];
     if (b.k === 0 && !b.holes.length && area < 520 && b.h < 15 && h3 < 0.42 && isRectish(b.outer)) {
-      addGable(ch.plain, b.outer, b.h, tile, col);
+      addGable(ch.roof, b.outer, b.h, tile, col, ch.plain);
     } else if (b.k === 0 && !b.holes.length && area < 300 && b.h < 15 && h3 < 0.42 && b.outer.length <= 16 && isConvex(b.outer)) {
-      addHip(ch.plain, b.outer, b.h, tile);
+      addHip(ch.roof, b.outer, b.h, tile);
     } else {
       const roof = b.k === 2 ? tile : b.k === 1 ? C(0xcab48a) : ROOF_FLAT[(h3 * 61 | 0) % ROOF_FLAT.length];
-      addCap(b.k === 1 ? ch.stone : ch.plain, b.outer, b.holes, b.h, roof);
+      addCap(ch.roof, b.outer, b.holes, b.h, roof);
       if (y0 > 0) addCap(ch.plain, b.outer, b.holes, y0, col, -1);
     }
   }
@@ -330,24 +329,24 @@ export function buildCity(scene, world) {
   const rn = world.rn;
   const bridgeAcc = new Acc();
   const bridgeCol = C(0xe2dacb), railCol = C(0xd8d0c0), ironCol = C(0x2f2f33);
+  // las calles se ven en la ortofoto; solo se modelan los tableros de los puentes
   for (const r of world.roads) {
+    if (!r.bridge) continue;
     const st = ROAD_STYLE[r.type];
     const pts = r.nodes.map((n) => [rn[n * 2], rn[n * 2 + 1]]);
-    let col = C(st[2]);
-    if (r.type === 7) {
-      const m = pts[pts.length >> 1];
-      if (world.parkAt(m[0], m[1])) col = C(0xd9b56d); // albero de parque
-    }
     const ch = chunk(pts[0][0], pts[0][1]);
-    addRibbon(r.bridge ? ch.bridgeRoad : ch.road, pts, st[0], r.bridge ? st[1] + 0.05 : st[1], col);
+    addRibbon(ch.bridgeRoad, pts, st[0], st[1] + 0.05, C(st[2]));
     if (r.bridge && r.type <= 3) addBridge(bridgeAcc, pts, st[0], bridgeCol, /triana|isabel/i.test(r.name) ? ironCol : railCol);
   }
 
   const groups = { buildings: new THREE.Group(), roads: new THREE.Group() };
   for (const c of chunks.values()) {
-    for (const [acc, mat, grp] of [[c.facade, facadeMat, 'buildings'], [c.plain, plainMat, 'buildings'], [c.stone, stoneMat, 'buildings'], [c.road, roadMat, 'roads'], [c.bridgeRoad, bridgeRoadMat, 'roads']]) {
+    const oc = ortho.chunk(c.cx, c.cz);
+    for (const [acc, mat, grp] of [[c.facade, facadeMat, 'buildings'], [c.plain, plainMat, 'buildings'], [c.stone, stoneMat, 'buildings'], [c.roof, oc.roofMat, 'buildings'], [c.bridgeRoad, bridgeRoadMat, 'roads']]) {
       if (acc.empty) continue;
-      const m = new THREE.Mesh(acc.geometry(), mat);
+      const geo = acc.geometry();
+      if (acc === c.roof) ortho.setUv(oc, geo);
+      const m = new THREE.Mesh(geo, mat);
       m.castShadow = grp === 'buildings';
       m.receiveShadow = true;
       groups[grp].add(m);
@@ -360,26 +359,33 @@ export function buildCity(scene, world) {
   }
   scene.add(groups.buildings, groups.roads);
 
-  // --- suelo: casco en piedra, alrededores en albero
+  // --- suelo: ortofoto en teselas (la ciudad y 2 teselas alrededor), albero más allá
   const [bx0, bz0, bx1, bz1] = world.bounds;
-  const groundMat = new THREE.MeshStandardMaterial({ color: 0xcbbb9f, roughness: 1, ...notWater });
-  const outerMat = new THREE.MeshStandardMaterial({ color: 0xbfa577, roughness: 1, ...notWater });
-  const inner = new THREE.Mesh(new THREE.PlaneGeometry(bx1 - bx0, bz1 - bz0), groundMat);
-  inner.rotation.x = -Math.PI / 2;
-  inner.position.set((bx0 + bx1) / 2, 0, (bz0 + bz1) / 2);
-  const outerShape = new THREE.Shape([[-9000, -9000], [9000, -9000], [9000, 9000], [-9000, 9000]].map(([x, y]) => new THREE.Vector2(x, y)));
-  outerShape.holes.push(new THREE.Path([[bx0, -bz0], [bx0, -bz1], [bx1, -bz1], [bx1, -bz0]].map(([x, y]) => new THREE.Vector2(x, y))));
+  const gx0 = Math.floor(bx0 / CHUNK) - 2, gz0 = Math.floor(bz0 / CHUNK) - 2;
+  const gx1 = Math.floor(bx1 / CHUNK) + 2, gz1 = Math.floor(bz1 / CHUNK) + 2;
+  for (let cx = gx0; cx <= gx1; cx++) {
+    for (let cz = gz0; cz <= gz1; cz++) {
+      const oc = ortho.chunk(cx, cz);
+      oc.groundMat = new THREE.MeshStandardMaterial({ map: oc.roofMat.map, roughness: 1, ...notWater });
+      const geo = new THREE.PlaneGeometry(CHUNK, CHUNK, 4, 4);
+      geo.rotateX(-Math.PI / 2);
+      geo.translate((cx + 0.5) * CHUNK, 0, (cz + 0.5) * CHUNK);
+      ortho.setUv(oc, geo);
+      const m = new THREE.Mesh(geo, oc.groundMat);
+      m.receiveShadow = true;
+      m.renderOrder = -1;
+      scene.add(m);
+    }
+  }
+  const ex0 = gx0 * CHUNK, ez0 = gz0 * CHUNK, ex1 = (gx1 + 1) * CHUNK, ez1 = (gz1 + 1) * CHUNK;
+  const outerMat = new THREE.MeshStandardMaterial({ color: 0xa89a7c, roughness: 1, ...notWater });
+  const outerShape = new THREE.Shape([[-12000, -12000], [12000, -12000], [12000, 12000], [-12000, 12000]].map(([x, y]) => new THREE.Vector2(x, y)));
+  outerShape.holes.push(new THREE.Path([[ex0, -ez0], [ex0, -ez1], [ex1, -ez1], [ex1, -ez0]].map(([x, y]) => new THREE.Vector2(x, y))));
   const outer = new THREE.Mesh(new THREE.ShapeGeometry(outerShape), outerMat);
   outer.rotation.x = -Math.PI / 2;
-  for (const m of [inner, outer]) { m.receiveShadow = true; m.renderOrder = -1; scene.add(m); }
-
-  // --- parques
-  const parkAcc = new Acc();
-  const grass = [0x7f9a4c, 0x88a052, 0x76924a].map(C);
-  world.parks.forEach((p, i) => addCap(parkAcc, p.outer, p.holes, 0.03, grass[i % grass.length]));
-  const parks = new THREE.Mesh(parkAcc.geometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, ...notWater }));
-  parks.receiveShadow = true;
-  scene.add(parks);
+  outer.receiveShadow = true;
+  outer.renderOrder = -1;
+  scene.add(outer);
 
   // --- agua: máscara, muros de muelle y superficie con reflejos
   const shapes = world.water.map((w) => {

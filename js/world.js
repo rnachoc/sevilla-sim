@@ -153,6 +153,8 @@ class World {
     this.origin = d.origin;
     this.lm = d.lm;
     this.project = makeProjector(d.origin);
+    const [lat0, lon0] = d.origin, kx = Math.cos(lat0 * Math.PI / 180) * 111320, kz = 110574;
+    this.unproject = (x, z) => [lat0 - z / kz, lon0 + x / kx];
     this.rn = d.rn;
     this.buildings = d.buildings;
     this.roads = d.roads;
